@@ -25,7 +25,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import sys
 import socket
 
 import tornado.httpserver
@@ -34,21 +33,27 @@ import tornado.iostream
 import tornado.web
 import tornado.httpclient
 
-__all__ = ['ProxyHandler', 'run_proxy']
+
+__all__ = ['ProxyHandler']
 
 
 class ProxyHandler(tornado.web.RequestHandler):
     SUPPORTED_METHODS = ['GET', 'POST', 'CONNECT']
 
+    def initialize(self, cache):
+        self.cache = cache
+
     @tornado.web.asynchronous
     def get(self):
-
-        def handle_response(response):
+        def handle_response(response, set_cache=True):
             if response.error and not isinstance(response.error,
                     tornado.httpclient.HTTPError):
                 self.set_status(500)
                 self.write('Internal server error:\n' + str(response.error))
             else:
+                if set_cache and self.cache is not None:
+                    # add the response to the cache
+                    self.cache[req] = response
                 self.set_status(response.code)
                 for header in ('Date', 'Cache-Control', 'Server',
                         'Content-Type', 'Location'):
@@ -63,6 +68,15 @@ class ProxyHandler(tornado.web.RequestHandler):
             method=self.request.method, body=self.request.body,
             headers=self.request.headers, follow_redirects=False,
             allow_nonstandard_methods=True)
+
+        if self.cache is not None:
+            try:
+                response = self.cache.get(req)
+                if response:
+                    return handle_response(response, False)
+            except:
+                # Error loading from cache
+                pass
 
         client = tornado.httpclient.AsyncHTTPClient()
         try:
@@ -112,25 +126,3 @@ class ProxyHandler(tornado.web.RequestHandler):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         upstream = tornado.iostream.IOStream(s)
         upstream.connect((host, int(port)), start_tunnel)
-
-
-def run_proxy(port, start_ioloop=True):
-    """
-    Run proxy on the specified port. If start_ioloop is True (default),
-    the tornado IOLoop will be started immediately.
-    """
-    app = tornado.web.Application([
-        (r'.*', ProxyHandler),
-    ])
-    app.listen(port)
-    ioloop = tornado.ioloop.IOLoop.instance()
-    if start_ioloop:
-        ioloop.start()
-
-if __name__ == '__main__':
-    port = 8888
-    if len(sys.argv) > 1:
-        port = int(sys.argv[1])
-
-    print ("Starting HTTP proxy on port %d" % port)
-    run_proxy(port)

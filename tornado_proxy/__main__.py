@@ -1,6 +1,4 @@
-
-
-if __name__ == '__main__':
+def main():
     import argparse
     parser = argparse.ArgumentParser(description='Run a Tornado based proxy.')
     parser.add_argument('--port', dest='port', type=int, default=8888,
@@ -31,3 +29,6 @@ if __name__ == '__main__':
     from tornado_proxy import run_proxy
     print ("Starting HTTP proxy on port %d" % args.port)
     run_proxy(args.port, cache=cache, debug=args.debug)
+
+if __name__ == '__main__':
+    main()

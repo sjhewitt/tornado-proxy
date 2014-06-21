@@ -16,10 +16,10 @@ def main():
 
     if args.cache == 'wayback':
         from tornado_proxy.cache import WaybackFileSystemCache
-        cache = WaybackFileSystemCache("/tmp/proxy_cache")
+        cache = WaybackFileSystemCache(args.cache_folder)
     elif args.cache == 'file':
         from tornado_proxy.cache import FileSystemCache
-        cache = FileSystemCache("/tmp/proxy_cache")
+        cache = FileSystemCache(args.cache_folder)
     elif args.cache == 'simple':
         from tornado_proxy.cache import SimpleCache
         cache = SimpleCache()

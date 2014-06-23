@@ -26,15 +26,19 @@
 # THE SOFTWARE.
 
 import socket
+import logging
 
+import tornado.httpclient
 import tornado.httpserver
 import tornado.ioloop
 import tornado.iostream
 import tornado.web
-import tornado.httpclient
 
+from .cache import WaybackPageNotFound
 
 __all__ = ['ProxyHandler']
+
+logger = logging.getLogger('tornado.proxy')
 
 
 class ProxyHandler(tornado.web.RequestHandler):
@@ -74,9 +78,13 @@ class ProxyHandler(tornado.web.RequestHandler):
                 response = self.cache.get(req)
                 if response:
                     return handle_response(response, False)
+            except WaybackPageNotFound:
+                self.set_status(523)
+                self.write("WaybackPageNotFound")
+                self.finish()
+                return
             except:
-                # Error loading from cache
-                pass
+                logger.exception("Error reading from cache")
 
         client = tornado.httpclient.AsyncHTTPClient()
         try:

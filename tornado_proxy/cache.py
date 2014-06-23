@@ -1,13 +1,14 @@
-import hashlib
-import logging
-import time
 import gzip
-import os.path
+import hashlib
 import json
+import logging
+import os.path
 import sqlite3
-from collections import namedtuple, MutableMapping
-from tornado.httputil import HTTPHeaders
+import time
+from collections import MutableMapping, namedtuple
+
 from tornado.httpclient import HTTPError
+from tornado.httputil import HTTPHeaders
 
 logger = logging.getLogger("tornado.proxy.cache")
 
@@ -111,6 +112,10 @@ class FileSystemCache(Cache):
             f.write(val.body)
 
 
+class WaybackPageNotFound(Exception):
+    pass
+
+
 class WaybackFileSystemCache(FileSystemCache):
 
     def __init__(self, root, db_file='wayback.db', default_within=86400):
@@ -168,7 +173,7 @@ class WaybackFileSystemCache(FileSystemCache):
         val = c.fetchone()
         if val:
             if error_on_miss:
-                raise "Fail!!!"
+                raise WaybackPageNotFound
             request._wb_insert = False
             request._wb_timestamp = val[0]
         else:

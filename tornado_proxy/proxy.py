@@ -34,7 +34,7 @@ import tornado.ioloop
 import tornado.iostream
 import tornado.web
 
-from .cache import WaybackPageNotFound
+from tornado_proxy.cache import WaybackPageNotFound
 
 __all__ = ['ProxyHandler']
 
@@ -60,7 +60,8 @@ class ProxyHandler(tornado.web.RequestHandler):
                     self.cache[req] = response
                 self.set_status(response.code)
                 for header in ('Date', 'Cache-Control', 'Server',
-                        'Content-Type', 'Location'):
+                               'Content-Type', 'Location',
+                               'X-Proxy-Cache-Key', 'X-Wayback-Timestamp'):
                     v = response.headers.get(header)
                     if v:
                         self.set_header(header, v)
@@ -68,8 +69,11 @@ class ProxyHandler(tornado.web.RequestHandler):
                     self.write(response.body)
             self.finish()
 
+        body = self.request.body
+        if self.request.method == 'GET' and not body:
+            body = None
         req = tornado.httpclient.HTTPRequest(url=self.request.uri,
-            method=self.request.method, body=self.request.body,
+            method=self.request.method, body=body,
             headers=self.request.headers, follow_redirects=False,
             allow_nonstandard_methods=True)
 

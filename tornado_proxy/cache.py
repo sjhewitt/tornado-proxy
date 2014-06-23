@@ -18,7 +18,8 @@ class Cache(MutableMapping):
         hash = hashlib.md5()
         hash.update(request.url)
         hash.update(request.method)
-        hash.update(request.body)
+        if request.body is not None:
+            hash.update(request.body)
         return hash.hexdigest()
 
     def __contains__(self, request):
@@ -30,7 +31,7 @@ class Cache(MutableMapping):
     def __getitem__(self, request):
         key = self.hash_request(request)
         logger.info('Returning request %s from cache', key)
-        return self._get(key)
+        return self._get(request, key)
 
     def __setitem__(self, request, response):
         key = self.hash_request(request)
@@ -54,7 +55,7 @@ class SimpleCache(Cache):
     def _contains(self, key):
         return key in self.data
 
-    def _get(self, key):
+    def _get(self, request, key):
         return self.data[key]
 
     def _set(self, key, val):
@@ -65,20 +66,32 @@ HTTPResponse = namedtuple('HTTPResponse', ['url', 'error', 'code', 'headers', 'b
 
 
 class FileSystemCache(Cache):
+    """Stores responses on the filesystem
+
+    The file format used is gzipped plain text. The first 3 lines contain the
+    request/response metadata, then the rest of the file is the body of the
+    response:
+
+    REQUEST_URL
+    STATUS_CODE,ERROR_MESSAGE
+    HEADERS_JSON
+    BODY
+    """
 
     def __init__(self, root):
         self.root = root
 
     def hash_request(self, request):
         hash = super(FileSystemCache, self).hash_request(request)
-        return os.path.join(self.root, hash[0:2], hash[2:4], hash + '.gz')
+        return os.path.join(hash[0:2], hash[2:4], hash + '.gz')
 
     def _contains(self, key):
         return os.path.exists(key)
 
-    def _get(self, key):
+    def _get(self, request, key):
         try:
-            with gzip.open(key, 'rb') as f:
+            path = os.path.join(self.root, key)
+            with gzip.open(path, 'rb') as f:
                 url = f.readline()
                 code, message = f.readline().split(',', 1)
                 code = int(code)
@@ -88,15 +101,18 @@ class FileSystemCache(Cache):
                     error = None
                 headers = HTTPHeaders(json.loads(f.readline()))
                 body = f.read()
+            headers['X-Proxy-Cache-Key'] = key
             return HTTPResponse(url, error, code, headers, body)
         except IOError:
             raise KeyError
 
     def _set(self, key, val):
-        d = os.path.dirname(key)
+        val.headers['X-Proxy-Cache-Key'] = key
+        path = os.path.join(self.root, key)
+        d = os.path.dirname(path)
         if not os.path.exists(d):
             os.makedirs(d)
-        with gzip.open(key, 'wb') as f:
+        with gzip.open(path, 'wb') as f:
             f.write(val.request.url)
             f.write('\n')
             if val.error:
@@ -134,6 +150,9 @@ class WaybackFileSystemCache(FileSystemCache):
         self.db.commit()
 
     def hash_request(self, request):
+        """Uses the database index to get the hash of the request.
+        This is a little bit ugly as it uses the request to store state between
+        getting and setting cache values"""
         path = getattr(request, "_wb_path", None)
         if path:
             return path
@@ -180,9 +199,15 @@ class WaybackFileSystemCache(FileSystemCache):
             request._wb_insert = True
             request._wb_timestamp = now
         request._wb_path = os.path.join(
-            self.root, request._wb_hash[0:2], request._wb_hash[2:4],
+            request._wb_hash[0:2], request._wb_hash[2:4],
             request._wb_hash + '-' + str(request._wb_timestamp) + '.gz')
         return request._wb_path
+
+    def _get(self, request, key):
+        # Provide the wayback timestamp in the response headers
+        response = super(WaybackFileSystemCache, self)._get(request, key)
+        response.headers['X-Wayback-Timestamp'] = unicode(request._wb_timestamp)
+        return response
 
     def __setitem__(self, request, response):
         super(WaybackFileSystemCache, self).__setitem__(request, response)

@@ -183,12 +183,12 @@ class WaybackFileSystemCache(FileSystemCache):
                 # version that is between those 2 values. this should raise an
                 # error if there's a miss!
                 args = (request_time, request_time - within)
-                f = "timestamp < ? AND timestamp > ?"
+                f = "timestamp <= ? AND timestamp > ?"
                 error_on_miss = True
             else:
                 # otherwise we just want any version that's before the
                 # specified timestamp
-                f = "timestamp < ?"
+                f = "timestamp <= ?"
         else:
             # if no request tiem was specified, we default to finding a page
             # within the specified or default time range

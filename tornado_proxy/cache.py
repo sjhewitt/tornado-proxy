@@ -7,7 +7,8 @@ import sqlite3
 import time
 from collections import MutableMapping, namedtuple
 
-from tornado.httpclient import HTTPError
+import tornado.web
+from tornado.httpclient import HTTPError, HTTPRequest
 from tornado.httputil import HTTPHeaders
 
 logger = logging.getLogger("tornado.proxy.cache")
@@ -113,7 +114,10 @@ class FileSystemCache(Cache):
         if not os.path.exists(d):
             os.makedirs(d)
         with gzip.open(path, 'wb') as f:
-            f.write(val.request.url)
+            try:
+                f.write(val.request.url)
+            except AttributeError:
+                f.write(val.url)
             f.write('\n')
             if val.error:
                 f.write(unicode(val.error.code))
@@ -157,8 +161,16 @@ class WaybackFileSystemCache(FileSystemCache):
         if path:
             return path
         request._wb_hash = Cache.hash_request(self, request)
-        c = self.db.cursor()
         now = int(time.time())
+        if hasattr(request, "_wb_force"):
+            if not hasattr(request, "_wb_timestamp"):
+                request._wb_timestamp = now
+            request._wb_insert = True
+            request._wb_path = os.path.join(
+                request._wb_hash[0:2], request._wb_hash[2:4],
+                request._wb_hash + '-' + str(request._wb_timestamp) + '.gz')
+            return request._wb_path
+        c = self.db.cursor()
         request_time = request.headers.pop('X-Wayback-Timestamp', None)
         within = request.headers.pop('X-Wayback-Within', None)
         error_on_miss = False
@@ -218,3 +230,70 @@ class WaybackFileSystemCache(FileSystemCache):
                 "INSERT INTO idx (key, timestamp) VALUES (?, ?);",
                 (request._wb_hash, request._wb_timestamp))
             self.db.commit()
+
+
+class CacheHandler(tornado.web.RequestHandler):
+
+    def initialize(self, cache):
+        self.cache = cache
+
+    def get(self):
+        url = self.get_argument('url')
+        method = self.get_argument('method', 'GET')
+        request = HTTPRequest(url, method=method)
+        response = self.cache.get(request)
+        if not response:
+            self.set_status(404)
+            self.write('Page not found in cache')
+            self.finish()
+        self.set_status(response.code)
+        for header in ('Date', 'Cache-Control', 'Server',
+                       'Content-Type', 'Location',
+                       'X-Proxy-Cache-Key', 'X-Wayback-Timestamp'):
+            v = response.headers.get(header)
+            if v:
+                self.set_header(header, v)
+        self.write(response.body)
+        self.finish()
+
+    def post(self):
+        """
+        data = {
+            'request': {
+                'method': 'GET',
+                'url': 'http://www.google.ca',
+                'body': None
+            },
+            'response': {
+                'url': 'http://www.google.ca',
+                'error': None,
+                'code': 404,
+                'headers': {},
+                'body': 'meh'
+            },
+            'wayback': {
+                'timestamp': 123456
+            }
+        }
+        """
+        data = json.loads(self.request.body)
+        request = HTTPRequest(
+            url=data['request']['url'],
+            method=data['request'].get('method', 'GET'),
+            body=data['request'].get('body')
+        )
+        request._wb_force = True
+        wayback = data.get('wayback')
+        if wayback:
+            for k, v in wayback.iteritems():
+                setattr(request, '_wb_' + k, v)
+        response = HTTPResponse(
+            url=data['response']['url'],
+            error=data['response'].get('error'),
+            code=data['response'].get('code', 200),
+            headers=data['response'].get('headers', {}),
+            body=data['response']['body']
+        )
+        self.cache[request] = response
+        self.write('ok')
+        self.finish()

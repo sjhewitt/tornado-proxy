@@ -10,9 +10,13 @@ def run_proxy(port, cache=None, debug=False, start_ioloop=True):
         from tornado.log import enable_pretty_logging
         enable_pretty_logging()
     import tornado.web
-    app = tornado.web.Application([
+    handlers = [
         (r'.*', ProxyHandler, {'cache': cache}),
-    ], debug=debug)
+    ]
+    if cache is not None:
+        from tornado_proxy.cache import CacheHandler
+        handlers.insert(0, (r'^/cache/$', CacheHandler, {'cache': cache}))
+    app = tornado.web.Application(handlers, debug=debug)
     app.listen(port)
     ioloop = tornado.ioloop.IOLoop.instance()
 

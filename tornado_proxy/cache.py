@@ -1,3 +1,4 @@
+import codecs
 import gzip
 import hashlib
 import json
@@ -92,7 +93,9 @@ class FileSystemCache(Cache):
     def _get(self, request, key):
         try:
             path = os.path.join(self.root, key)
-            with gzip.open(path, 'rb') as f:
+            reader = codecs.getreader("utf-8")
+            with gzip.open(path, 'rb') as _f:
+                f = reader(_f)
                 url = f.readline()
                 code, message = f.readline().split(',', 1)
                 code = int(code)
@@ -113,7 +116,9 @@ class FileSystemCache(Cache):
         d = os.path.dirname(path)
         if not os.path.exists(d):
             os.makedirs(d)
-        with gzip.open(path, 'wb') as f:
+        writer = codecs.getwriter('utf-8')
+        with gzip.open(path, 'wb') as _f:
+            f = writer(_f)
             try:
                 f.write(val.request.url)
             except AttributeError:

@@ -67,6 +67,16 @@ class SimpleCache(Cache):
 HTTPResponse = namedtuple('HTTPResponse', ['url', 'error', 'code', 'headers', 'body'])
 
 
+def get_content_charset(request):
+    """Gets the charset of the response body"""
+    try:
+        content_type = request.headers['Content-Type']
+        # Example: 'application/json;charset=utf-8' -> 'utf-8'
+        return content_type.split(';')[1].split('=')[1]
+    except (KeyError, IndexError):
+        return 'latin1'
+
+
 class FileSystemCache(Cache):
     """Stores responses on the filesystem
 
@@ -104,7 +114,12 @@ class FileSystemCache(Cache):
                 else:
                     error = None
                 headers = HTTPHeaders(json.loads(f.readline()))
-                body = f.read()
+                body = u''
+                while True:
+                    part = f.read()
+                    if not part:
+                        break
+                    body += part
             headers['X-Proxy-Cache-Key'] = key
             return HTTPResponse(url, error, code, headers, body)
         except IOError:
@@ -117,24 +132,32 @@ class FileSystemCache(Cache):
         if not os.path.exists(d):
             os.makedirs(d)
         writer = codecs.getwriter('utf-8')
-        with gzip.open(path, 'wb') as _f:
-            f = writer(_f)
-            try:
-                f.write(val.request.url)
-            except AttributeError:
-                f.write(val.url)
-            f.write('\n')
-            if val.error:
-                f.write(unicode(val.error.code))
-                f.write(',')
-                f.write(val.error.message)
-            else:
-                f.write(unicode(val.code))
-                f.write(',')
-            f.write('\n')
-            f.write(json.dumps(val.headers))
-            f.write('\n')
-            f.write(val.body)
+        try:
+            with gzip.open(path, 'wb') as _f:
+                f = writer(_f)
+                try:
+                    f.write(val.request.url)
+                except AttributeError:
+                    f.write(val.url)
+                f.write('\n')
+                if val.error:
+                    f.write(unicode(val.error.code))
+                    f.write(',')
+                    f.write(val.error.message)
+                else:
+                    f.write(unicode(val.code))
+                    f.write(',')
+                f.write('\n')
+                f.write(json.dumps(val.headers))
+                f.write('\n')
+                body = val.body
+                if not isinstance(body, unicode):
+                    charset = get_content_charset(val)
+                    body = body.decode(charset)
+                f.write(body)
+        except:
+            logger.exception('Exception while trying to write cache file')
+            os.remove(path)
 
 
 class WaybackPageNotFound(Exception):

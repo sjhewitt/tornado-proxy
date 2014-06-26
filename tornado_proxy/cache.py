@@ -209,13 +209,13 @@ class WaybackFileSystemCache(FileSystemCache):
             within = int(within)
         if request_time:
             request_time = int(request_time)
+            error_on_miss = True
             if within:
                 # if request_time and within are specified, we want to get a
                 # version that is between those 2 values. this should raise an
                 # error if there's a miss!
                 args = (request_time, request_time - within)
                 f = "timestamp <= ? AND timestamp > ?"
-                error_on_miss = True
             else:
                 # otherwise we just want any version that's before the
                 # specified timestamp

@@ -213,7 +213,10 @@ class WaybackFileSystemCache(FileSystemCache):
         if request_time:
             request_time = int(request_time)
             error_on_miss = True
-            if within:
+            if within == 0:
+                args = (request_time, )
+                f = "timestamp = ?"
+            elif within:
                 # if request_time and within are specified, we want to get a
                 # version that is between those 2 values. this should raise an
                 # error if there's a miss!
@@ -227,10 +230,14 @@ class WaybackFileSystemCache(FileSystemCache):
         else:
             # if no request tiem was specified, we default to finding a page
             # within the specified or default time range
-            if not within:
-                within = self.default_within
-            args = (now - within, )
-            f = "timestamp > ?"
+            if within == 0:
+                args = (now, )
+                f = "timestamp = ?"
+            else:
+                if not within:
+                    within = self.default_within
+                args = (now - within, )
+                f = "timestamp > ?"
 
         c.execute("""SELECT timestamp FROM idx WHERE
                 key=? AND {}

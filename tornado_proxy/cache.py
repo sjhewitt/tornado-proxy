@@ -67,12 +67,12 @@ class SimpleCache(Cache):
 HTTPResponse = namedtuple('HTTPResponse', ['url', 'error', 'code', 'headers', 'body'])
 
 
-def get_content_charset(request):
+def get_content_charset(headers):
     """Gets the charset of the response body"""
     try:
-        content_type = request.headers['Content-Type']
+        content_type = headers['Content-Type']
         # Example: 'application/json;charset=utf-8' -> 'utf-8'
-        return content_type.split(';')[1].split('=')[1]
+        return content_type.split(';')[1].split('=')[1].lower()
     except (KeyError, IndexError):
         return 'latin1'
 
@@ -121,6 +121,9 @@ class FileSystemCache(Cache):
                         break
                     body += part
             headers['X-Proxy-Cache-Key'] = key
+            charset = get_content_charset(headers)
+            if charset != 'utf-8':
+                body = body.encode(charset)
             return HTTPResponse(url, error, code, headers, body)
         except IOError:
             raise KeyError
@@ -152,7 +155,7 @@ class FileSystemCache(Cache):
                 f.write('\n')
                 body = val.body
                 if not isinstance(body, unicode):
-                    charset = get_content_charset(val)
+                    charset = get_content_charset(val.headers)
                     body = body.decode(charset)
                 f.write(body)
         except:

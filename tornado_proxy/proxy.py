@@ -82,9 +82,15 @@ class ProxyHandler(tornado.web.RequestHandler):
                 response = self.cache.get(req)
                 if response:
                     return handle_response(response, False)
-            except WaybackPageNotFound:
-                self.set_status(523)
-                self.write("WaybackPageNotFound")
+            except WaybackPageNotFound as e:
+                # need to set the error code directly here, as 523 is not an
+                # official error code. It's similar to the 523 code CloudFlare
+                # returns, so it's appropriated here
+                self._status_code = 523
+                self._reason = 'WaybackPageNotFound'
+                self.write(
+                    "Could not find \"{0.url}\" in cache before {0.timestamp} "
+                    "within {0.within}\n".format(e))
                 self.finish()
                 return
             except:

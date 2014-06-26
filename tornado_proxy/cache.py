@@ -164,7 +164,10 @@ class FileSystemCache(Cache):
 
 
 class WaybackPageNotFound(Exception):
-    pass
+    def __init__(self, url, timestamp, within=None):
+        self.url = url
+        self.timestamp = timestamp
+        self.within = within
 
 
 class WaybackFileSystemCache(FileSystemCache):
@@ -238,7 +241,7 @@ class WaybackFileSystemCache(FileSystemCache):
             request._wb_insert = False
             request._wb_timestamp = val[0]
         elif error_on_miss:
-            raise WaybackPageNotFound
+            raise WaybackPageNotFound(request.url, request_time)
         else:
             request._wb_insert = True
             request._wb_timestamp = now

@@ -257,10 +257,17 @@ class WaybackFileSystemCache(FileSystemCache):
             request._wb_hash + '-' + str(request._wb_timestamp) + '.gz')
         return request._wb_path
 
+    def _set(self, key, response):
+        # Provide the wayback timestamp in the response headers
+        super(WaybackFileSystemCache, self)._set(key, response)
+        response.headers['X-Wayback-Timestamp'] = \
+            unicode(response.request._wb_timestamp)
+
     def _get(self, request, key):
         # Provide the wayback timestamp in the response headers
         response = super(WaybackFileSystemCache, self)._get(request, key)
-        response.headers['X-Wayback-Timestamp'] = unicode(request._wb_timestamp)
+        response.headers['X-Wayback-Timestamp'] = \
+            unicode(request._wb_timestamp)
         return response
 
     def __setitem__(self, request, response):

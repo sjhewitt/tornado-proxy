@@ -235,10 +235,10 @@ class WaybackFileSystemCache(FileSystemCache):
                 LIMIT 1;""".format(f), (request._wb_hash, ) + args)
         val = c.fetchone()
         if val:
-            if error_on_miss:
-                raise WaybackPageNotFound
             request._wb_insert = False
             request._wb_timestamp = val[0]
+        elif error_on_miss:
+            raise WaybackPageNotFound
         else:
             request._wb_insert = True
             request._wb_timestamp = now

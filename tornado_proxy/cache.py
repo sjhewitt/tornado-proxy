@@ -169,7 +169,7 @@ class WaybackPageNotFound(Exception):
 
 class WaybackFileSystemCache(FileSystemCache):
 
-    def __init__(self, root, db_file='wayback.db', default_within=86400):
+    def __init__(self, root, db_file='wayback.db', default_within=2592000):
         super(WaybackFileSystemCache, self).__init__(root)
         db_file = os.path.join(root, 'wayback.db')
         create_tables = not os.path.exists(db_file)

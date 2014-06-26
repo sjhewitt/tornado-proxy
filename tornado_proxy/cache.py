@@ -216,6 +216,7 @@ class WaybackFileSystemCache(FileSystemCache):
             else:
                 # otherwise we just want any version that's before the
                 # specified timestamp
+                args = ()
                 f = "timestamp <= ?"
         else:
             # if no request tiem was specified, we default to finding a page

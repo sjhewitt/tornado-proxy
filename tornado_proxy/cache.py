@@ -1,11 +1,11 @@
 import codecs
+import datetime
 import gzip
 import hashlib
 import json
 import logging
 import os.path
 import sqlite3
-import time
 from collections import MutableMapping, namedtuple
 
 import tornado.web
@@ -195,7 +195,7 @@ class WaybackFileSystemCache(FileSystemCache):
         if path:
             return path
         request._wb_hash = Cache.hash_request(self, request)
-        now = int(time.time())
+        now = int(datetime.datetime.utcnow().strftime("%s"))
         if hasattr(request, "_wb_force"):
             if not hasattr(request, "_wb_timestamp"):
                 request._wb_timestamp = now

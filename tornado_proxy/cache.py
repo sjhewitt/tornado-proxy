@@ -41,7 +41,9 @@ class Cache(MutableMapping):
         self._set(key, response)
 
     def __delitem__(self, request):
-        raise NotImplementedError
+        key = self.hash_request(request)
+        logger.info('Putting request %s into cache', key)
+        self._del(request, key)
 
     def __iter__(self):
         raise NotImplementedError
@@ -62,6 +64,9 @@ class SimpleCache(Cache):
 
     def _set(self, key, val):
         self.data[key] = val
+
+    def _del(self, request, key):
+        del self.data[key]
 
 
 HTTPResponse = namedtuple('HTTPResponse', ['url', 'error', 'code', 'headers', 'body'])
@@ -98,7 +103,8 @@ class FileSystemCache(Cache):
         return os.path.join(hash[0:2], hash[2:4], hash + '.gz')
 
     def _contains(self, key):
-        return os.path.exists(key)
+        path = os.path.join(self.root, key)
+        return os.path.exists(path)
 
     def _get(self, request, key):
         try:
@@ -161,6 +167,13 @@ class FileSystemCache(Cache):
         except:
             logger.exception('Exception while trying to write cache file')
             os.remove(path)
+
+    def _del(self, request, key):
+        path = os.path.join(self.root, key)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 class WaybackPageNotFound(Exception):
@@ -280,6 +293,21 @@ class WaybackFileSystemCache(FileSystemCache):
                 (request._wb_hash, request._wb_timestamp))
             self.db.commit()
 
+    def _del(self, request, key):
+        c = self.db.cursor()
+        hash = request._wb_hash
+        c.execute("SELECT timestamp FROM idx WHERE key=?", (hash, ))
+        timestamps = c.fetchall()
+        c.execute("DELETE FROM idx where key=?", (hash, ))
+        self.db.commit()
+        for (timestamp, ) in timestamps:
+            path = os.path.join(self.root, hash[0:2], hash[2:4],
+                                hash + '-' + str(timestamp) + '.gz')
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
 
 class CacheHandler(tornado.web.RequestHandler):
 
@@ -344,5 +372,16 @@ class CacheHandler(tornado.web.RequestHandler):
             body=data['response']['body']
         )
         self.cache[request] = response
+        self.write('ok')
+        self.finish()
+
+    def delete(self):
+        """Deletes a url from the cache"""
+        data = json.loads(self.request.body)
+        request = HTTPRequest(
+            url=data['url'],
+            method=data.get('method', 'GET'),
+            body=data.get('body'))
+        del self.cache[request]
         self.write('ok')
         self.finish()

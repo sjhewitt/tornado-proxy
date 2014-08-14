@@ -119,6 +119,19 @@ class TestWaybackProxy(tornado.testing.AsyncTestCase):
         self.assertEqual(response.body, "{\"foo\": \"baz\"}")
         self.assertEqual(response.headers['X-Proxy-Cache-Key'], cache_key)
 
+        # now delete the cached value
+        req = tornado.httpclient.HTTPRequest(
+            "http://respondto.it/test-tornado-proxy.json")
+        del self.cache[req]
+
+        # and the value should be the changed value
+        req = tornado.httpclient.HTTPRequest(
+            "http://respondto.it/test-tornado-proxy.json",
+            proxy_host='127.0.0.1', proxy_port=8889)
+        response = yield client.fetch(req)
+        self.assertEqual(response.body, "{\"bar\": \"foo\"}")
+        self.assertNotEqual(response.headers['X-Proxy-Cache-Key'], cache_key)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -42,7 +42,7 @@ class Cache(MutableMapping):
 
     def __delitem__(self, request):
         key = self.hash_request(request)
-        logger.info('Putting request %s into cache', key)
+        logger.info('Deleting %s from cache', key)
         self._del(request, key)
 
     def __iter__(self):

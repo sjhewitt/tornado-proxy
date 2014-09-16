@@ -325,7 +325,7 @@ def build_request(hash, timestamp):
     request._wb_hash = hash
     request._wb_timestamp = timestamp
     request._wb_path = os.path.join(
-        hash[0:2], hash[2:4], hash + '-' + timestamp + '.gz')
+        hash[0:2], hash[2:4], hash + '-' + str(timestamp) + '.gz')
     return request
 
 

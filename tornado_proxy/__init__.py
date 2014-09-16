@@ -14,7 +14,8 @@ def run_proxy(port, cache=None, debug=False, start_ioloop=True):
         (r'.*', ProxyHandler, {'cache': cache}),
     ]
     if cache is not None:
-        from tornado_proxy.cache import CacheHandler
+        from tornado_proxy.cache import CacheHandler, CacheListHandler
+        handlers.insert(0, (r'^/cache/list/$', CacheListHandler, {'cache': cache}))
         handlers.insert(0, (r'^/cache/$', CacheHandler, {'cache': cache}))
     app = tornado.web.Application(handlers, debug=debug)
     app.listen(port)

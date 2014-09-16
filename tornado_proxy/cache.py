@@ -112,8 +112,8 @@ class FileSystemCache(Cache):
             reader = codecs.getreader("utf-8")
             with gzip.open(path, 'rb') as _f:
                 f = reader(_f)
-                url = f.readline()
-                code, message = f.readline().split(',', 1)
+                url = f.readline().rstrip('\n')
+                code, message = f.readline().rstrip('\n').split(',', 1)
                 code = int(code)
                 if message:
                     error = HTTPError(code, message)
@@ -127,6 +127,7 @@ class FileSystemCache(Cache):
                         break
                     body += part
             headers['X-Proxy-Cache-Key'] = key
+            headers['X-Proxy-Cache-Url'] = url
             charset = get_content_charset(headers)
             if charset != 'utf-8':
                 body = body.encode(charset)
@@ -296,17 +297,36 @@ class WaybackFileSystemCache(FileSystemCache):
     def _del(self, request, key):
         c = self.db.cursor()
         hash = request._wb_hash
-        c.execute("SELECT timestamp FROM idx WHERE key=?", (hash, ))
-        timestamps = c.fetchall()
-        c.execute("DELETE FROM idx where key=?", (hash, ))
-        self.db.commit()
-        for (timestamp, ) in timestamps:
-            path = os.path.join(self.root, hash[0:2], hash[2:4],
-                                hash + '-' + str(timestamp) + '.gz')
+        timestamp = request._wb_timestamp
+        if timestamp:
+            c.execute("DELETE FROM idx where key=? AND timestamp=?",
+                      (hash, int(timestamp)))
+            self.db.commit()
             try:
-                os.remove(path)
+                os.remove(request._wb_path)
             except OSError:
                 pass
+        else:
+            c.execute("SELECT timestamp FROM idx WHERE key=?", (hash, ))
+            timestamps = c.fetchall()
+            c.execute("DELETE FROM idx where key=?", (hash, ))
+            self.db.commit()
+            for (timestamp, ) in timestamps:
+                path = os.path.join(self.root, hash[0:2], hash[2:4],
+                                    hash + '-' + str(timestamp) + '.gz')
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+
+def build_request(hash, timestamp):
+    request = HTTPRequest("")
+    request._wb_hash = hash
+    request._wb_timestamp = timestamp
+    request._wb_path = os.path.join(
+        hash[0:2], hash[2:4], hash + '-' + timestamp + '.gz')
+    return request
 
 
 class CacheHandler(tornado.web.RequestHandler):
@@ -315,10 +335,16 @@ class CacheHandler(tornado.web.RequestHandler):
         self.cache = cache
 
     def get(self):
-        url = self.get_argument('url')
-        method = self.get_argument('method', 'GET')
-        request = HTTPRequest(url, method=method)
-        response = self.cache.get(request)
+        key = self.get_argument('key', None)
+        timestamp = self.get_argument('timestamp', None)
+        if key:
+            request = build_request(key, timestamp)
+            response = self.cache[request]
+        else:
+            url = self.get_argument('url')
+            method = self.get_argument('method', 'GET')
+            request = HTTPRequest(url, method=method)
+            response = self.cache.get(request)
         if not response:
             self.set_status(404)
             self.write('Page not found in cache')
@@ -326,7 +352,8 @@ class CacheHandler(tornado.web.RequestHandler):
         self.set_status(response.code)
         for header in ('Date', 'Cache-Control', 'Server',
                        'Content-Type', 'Location',
-                       'X-Proxy-Cache-Key', 'X-Wayback-Timestamp'):
+                       'X-Proxy-Cache-Key', 'X-Wayback-Timestamp',
+                       'X-Proxy-Cache-Url'):
             v = response.headers.get(header)
             if v:
                 self.set_header(header, v)
@@ -378,10 +405,31 @@ class CacheHandler(tornado.web.RequestHandler):
     def delete(self):
         """Deletes a url from the cache"""
         data = json.loads(self.request.body)
-        request = HTTPRequest(
-            url=data['url'],
-            method=data.get('method', 'GET'),
-            body=data.get('body'))
+        key = data.get('key')
+        if key:
+            request = build_request(key, data['timestamp'])
+        else:
+            request = HTTPRequest(url=data['url'], headers={
+                'X-Wayback-Timestamp': data.get('timestamp')
+            }, body=data.get('body'))
         del self.cache[request]
         self.write('ok')
         self.finish()
+
+
+class CacheListHandler(tornado.web.RequestHandler):
+    def initialize(self, cache):
+        self.cache = cache
+
+    def get(self):
+        url = self.get_argument('url', None)
+        method = self.get_argument('method', 'GET')
+        cursor = self.cache.db.cursor()
+        if url:
+            request = HTTPRequest(url, method=method)
+            key = Cache.hash_request(self.cache, request)
+            cursor.execute("SELECT key, timestamp FROM idx where key=?", [key])
+        else:
+            cursor.execute("SELECT key, timestamp FROM idx limit 100")
+        results = cursor.fetchall()
+        self.render("templates/cache_list.html", results=results)
